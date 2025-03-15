@@ -13,21 +13,30 @@ struct CameraPreview: UIViewRepresentable {
         previewLayer.frame = view.frame
         
         // プレビューレイヤーの設定
-        previewLayer.videoGravity = .resizeAspectFill
+        previewLayer.videoGravity = .resizeAspect
         view.layer.addSublayer(previewLayer)
+        
+        // カメラのアスペクト比を3:4に設定
+        if let connection = previewLayer.connection {
+            let previewOrientation: AVCaptureVideoOrientation = .portrait
+            if connection.isVideoOrientationSupported {
+                connection.videoOrientation = previewOrientation
+            }
+        }
         
         // ビューの作成後にcameraManagerのプレビューを設定
         DispatchQueue.main.async {
             self.cameraManager.preview = previewLayer
-        }
-        
-        // セッションが開始されていない場合は開始
-        if !cameraManager.session.isRunning {
-            DispatchQueue.global(qos: .userInitiated).async {
-                cameraManager.session.startRunning()
+            
+            // セッションが開始されていない場合は開始
+            if !self.cameraManager.session.isRunning {
+                DispatchQueue.global(qos: .userInitiated).async {
+                    self.cameraManager.session.startRunning()
+                }
             }
         }
         
+        print("CameraPreview: makeUIViewが呼ばれました")
         return view
     }
     
@@ -35,6 +44,13 @@ struct CameraPreview: UIViewRepresentable {
         // フレームサイズが変更された場合にプレビューレイヤーのサイズを更新
         if let previewLayer = uiView.layer.sublayers?.first as? AVCaptureVideoPreviewLayer {
             previewLayer.frame = uiView.bounds
+        }
+        
+        // セッションが開始されていない場合は開始
+        if !cameraManager.session.isRunning {
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.cameraManager.session.startRunning()
+            }
         }
     }
 } 
