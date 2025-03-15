@@ -1,4 +1,7 @@
 import SwiftUI
+import Vision
+import CoreImage
+import CoreImage.CIFilterBuiltins
 
 struct CameraView: View {
     @StateObject var cameraManager = CameraManager()
@@ -141,6 +144,8 @@ struct ImageViewer: View {
     let image: UIImage
     @Binding var isPresented: Bool
     @Environment(\.presentationMode) var presentationMode
+    @State private var processedImage: UIImage?
+    @State private var isProcessing = false
     
     var body: some View {
         ZStack {
@@ -166,16 +171,65 @@ struct ImageViewer: View {
                 Spacer()
                 
                 // 画像表示
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if let processedImage = processedImage {
+                    Image(uiImage: processedImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
                 
                 Spacer()
+                
+                // 背景削除ボタン
+                Button(action: {
+                    removeBackgroundAsync()
+                }) {
+                    HStack {
+                        if isProcessing {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .padding(.trailing, 5)
+                        } else {
+                            Image(systemName: "scissors")
+                                .font(.system(size: 16))
+                        }
+                        Text(isProcessing ? "処理中..." : "背景を削除")
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(20)
+                }
+                .disabled(isProcessing || processedImage != nil)
+                .padding(.bottom, 20)
             }
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+    }
+    
+    private func removeBackgroundAsync() {
+        isProcessing = true
+        
+        Task {
+            let result = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let result = removeBackground(from: image)
+                    continuation.resume(returning: result)
+                }
+            }
+            
+            DispatchQueue.main.async {
+                self.processedImage = result
+                self.isProcessing = false
+            }
+        }
     }
 }
 
@@ -242,4 +296,65 @@ struct ImageData: Identifiable {
     let id: UUID
     let image: UIImage
     let index: Int
+}
+
+// 背景削除機能を追加
+func removeBackground(from image: UIImage) -> UIImage? {
+    guard let inputImage = CIImage(image: image) else {
+        print("CIImageの作成に失敗しました")
+        return nil
+    }
+    
+    // 元の画像の向きを保存
+    let originalOrientation = image.imageOrientation
+    
+    // 非同期処理
+    guard let maskImage = createMask(from: inputImage) else {
+        print("マスクの作成に失敗しました")
+        return nil
+    }
+    
+    let outputImage = applyMask(mask: maskImage, to: inputImage)
+    return convertToUIImage(ciImage: outputImage, orientation: originalOrientation)
+}
+
+// マスク生成
+private func createMask(from inputImage: CIImage) -> CIImage? {
+    let request = VNGenerateForegroundInstanceMaskRequest()
+    let handler = VNImageRequestHandler(ciImage: inputImage)
+    
+    do {
+        try handler.perform([request])
+        
+        if let result = request.results?.first {
+            let mask = try result.generateScaledMaskForImage(forInstances: result.allInstances, from: handler)
+            return CIImage(cvPixelBuffer: mask)
+        }
+    } catch {
+        print("マスク生成エラー: \(error)")
+    }
+    
+    return nil
+}
+
+// マスク適用
+private func applyMask(mask: CIImage, to image: CIImage) -> CIImage {
+    let filter = CIFilter.blendWithMask()
+    filter.inputImage = image
+    filter.maskImage = mask
+    filter.backgroundImage = CIImage.empty()
+    
+    return filter.outputImage!
+}
+
+// CIImageをUIImageに変換
+private func convertToUIImage(ciImage: CIImage, orientation: UIImage.Orientation = .up) -> UIImage {
+    let context = CIContext(options: nil)
+    guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
+        fatalError("CGImageの作成に失敗しました")
+    }
+    
+    // 元の画像の向きを適用
+    let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: orientation)
+    return uiImage
 } 
