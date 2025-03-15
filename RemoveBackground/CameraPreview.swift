@@ -10,7 +10,10 @@ struct CameraPreview: UIViewRepresentable {
         DispatchQueue.main.async {
             cameraManager.preview = AVCaptureVideoPreviewLayer(session: cameraManager.session)
             cameraManager.preview.frame = view.frame
-            cameraManager.preview.videoGravity = .resizeAspectFill
+            
+            // アスペクト比を設定
+            cameraManager.preview.videoGravity = .resizeAspect
+            
             view.layer.addSublayer(cameraManager.preview)
             
             // セッションが既に設定されていれば開始

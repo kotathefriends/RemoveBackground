@@ -11,22 +11,30 @@ class CameraManager: NSObject, ObservableObject {
     @Published var isError = false
     @Published var errorMessage = ""
     
+    // 撮影した写真を保存する配列
+    @Published var savedImages: [UIImage] = []
+    
+    // カメラセットアップ完了フラグ
+    private var isSetup = false
+    
     override init() {
         super.init()
-        // メインスレッドでの初期化を避ける
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.checkPermission()
-        }
+        checkPermission()
     }
     
     func checkPermission() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            setupCamera()
+            // メインスレッドでの初期化を避ける
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.setupCamera()
+            }
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { status in
                 if status {
-                    self.setupCamera()
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        self.setupCamera()
+                    }
                 } else {
                     self.handleError(message: "カメラへのアクセスが許可されていません")
                 }
@@ -47,13 +55,30 @@ class CameraManager: NSObject, ObservableObject {
     }
     
     func setupCamera() {
+        guard !isSetup else { return }
+        
         do {
             session.beginConfiguration()
+            
+            // 解像度の設定（高品質）
+            if session.canSetSessionPreset(.photo) {
+                session.sessionPreset = .photo
+            }
             
             guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
                 handleError(message: "カメラデバイスが見つかりません")
                 return
             }
+            
+            // カメラの設定
+            try device.lockForConfiguration()
+            if device.isExposureModeSupported(.continuousAutoExposure) {
+                device.exposureMode = .continuousAutoExposure
+            }
+            if device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
+                device.whiteBalanceMode = .continuousAutoWhiteBalance
+            }
+            device.unlockForConfiguration()
             
             let input = try AVCaptureDeviceInput(device: device)
             
@@ -66,24 +91,47 @@ class CameraManager: NSObject, ObservableObject {
             
             if session.canAddOutput(output) {
                 session.addOutput(output)
+                
+                // ビデオ安定化の設定
+                if let connection = output.connection(with: .video) {
+                    if connection.isVideoStabilizationSupported {
+                        connection.preferredVideoStabilizationMode = .auto
+                    }
+                }
+                
+                // 写真出力の設定
+                output.isHighResolutionCaptureEnabled = true
+                output.maxPhotoQualityPrioritization = .quality
             } else {
                 handleError(message: "カメラ出力を追加できません")
                 return
             }
             
             session.commitConfiguration()
+            isSetup = true
+            
+            print("カメラセットアップ完了")
+            startSession()
         } catch {
             handleError(message: "カメラのセットアップに失敗しました: \(error.localizedDescription)")
         }
     }
     
     func takePicture() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            self.output.capturePhoto(with: AVCapturePhotoSettings(), delegate: self)
-            DispatchQueue.main.async {
-                self.isTaken = true
-            }
+        guard session.isRunning else {
+            handleError(message: "カメラセッションが実行されていません")
+            return
         }
+        
+        // 写真設定
+        let settings = AVCapturePhotoSettings()
+        settings.flashMode = .auto
+        
+        // 高解像度設定を無効化して処理を高速化
+        settings.isHighResolutionPhotoEnabled = false
+        
+        // 写真撮影
+        output.capturePhoto(with: settings, delegate: self)
     }
     
     func retake() {
@@ -93,10 +141,20 @@ class CameraManager: NSObject, ObservableObject {
         }
     }
     
+    func saveCurrentImage() {
+        if let image = capturedImage {
+            DispatchQueue.main.async {
+                self.savedImages.append(image)
+                self.retake()
+            }
+        }
+    }
+    
     func startSession() {
         DispatchQueue.global(qos: .userInitiated).async {
             if !self.session.isRunning {
                 self.session.startRunning()
+                print("カメラセッション開始")
             }
         }
     }
@@ -105,6 +163,7 @@ class CameraManager: NSObject, ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async {
             if self.session.isRunning {
                 self.session.stopRunning()
+                print("カメラセッション停止")
             }
         }
     }
@@ -118,9 +177,23 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         }
         
         if let imageData = photo.fileDataRepresentation() {
+            let image = UIImage(data: imageData)
+            
             DispatchQueue.main.async {
-                self.capturedImage = UIImage(data: imageData)
-                if self.capturedImage == nil {
+                // 撮影した写真を保存
+                if let capturedImage = image {
+                    self.savedImages.append(capturedImage)
+                    
+                    // 撮影成功のフィードバックを表示（フラッシュ効果）
+                    self.capturedImage = capturedImage
+                    self.isTaken = true
+                    
+                    // 0.1秒後にカメラビューに戻る（待機時間を最小化）
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        self.isTaken = false
+                        self.capturedImage = nil
+                    }
+                } else {
                     self.handleError(message: "画像の処理に失敗しました")
                 }
             }
