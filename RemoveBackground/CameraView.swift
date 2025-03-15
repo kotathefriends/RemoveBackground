@@ -7,6 +7,7 @@ struct CameraView: View {
     @StateObject var cameraManager = CameraManager()
     @State private var selectedImageData: ImageData? = nil
     @State private var isImageViewerPresented = false
+    @State private var isAutoRemoveBackground = true // 背景自動削除フラグ
     
     var body: some View {
         GeometryReader { geometry in
@@ -66,8 +67,51 @@ struct CameraView: View {
                             // 撮影ボタン - 固定位置に配置
                             VStack {
                                 Spacer()
+                                
+                                // 背景自動削除の切り替えスイッチ
+                                Toggle(isOn: $isAutoRemoveBackground) {
+                                    Text("背景を自動削除")
+                                        .foregroundColor(.white)
+                                        .font(.system(size: 14))
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 8)
+                                .background(Color.black.opacity(0.6))
+                                .cornerRadius(15)
+                                .padding(.bottom, 10)
+                                
                                 Button(action: {
+                                    // 撮影前に変数を用意して、撮影後の処理を確実に実行できるようにする
+                                    let shouldProcessImage = isAutoRemoveBackground
+                                    
+                                    // 撮影処理
                                     cameraManager.takePicture()
+                                    
+                                    // 背景自動削除が有効な場合、撮影後に処理を行う
+                                    if shouldProcessImage {
+                                        // 撮影後の処理を行うタイミングを調整
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                                            // capturedImageを使用して処理
+                                            if let capturedImage = cameraManager.capturedImage {
+                                                print("撮影後の画像処理を開始: サイズ \(capturedImage.size)")
+                                                print("現在の保存画像数: \(cameraManager.savedImages.count)")
+                                                
+                                                // 最新の画像を処理
+                                                if cameraManager.savedImages.count > 0 {
+                                                    // 最新の画像を取得
+                                                    let lastImage = cameraManager.savedImages.last!
+                                                    print("最新の保存画像を処理: サイズ \(lastImage.size)")
+                                                    processImageWithBackgroundRemoval(lastImage)
+                                                } else {
+                                                    // savedImagesが空の場合はcapturedImageを使用
+                                                    print("savedImagesが空のため、capturedImageを使用")
+                                                    processImageWithBackgroundRemoval(capturedImage)
+                                                }
+                                            } else {
+                                                print("処理する画像が見つかりません: capturedImageがnil")
+                                            }
+                                        }
+                                    }
                                 }) {
                                     ZStack {
                                         Circle()
@@ -106,6 +150,7 @@ struct CameraView: View {
                             }
                         )
                         .frame(height: 120) // 固定高さ
+                        .id("thumbnailGallery-\(cameraManager.savedImages.count)-\(Date().timeIntervalSince1970)") // より確実に一意のIDを生成
                     }
                     .edgesIgnoringSafeArea(.all)
                 }
@@ -121,11 +166,87 @@ struct CameraView: View {
             cameraManager.stopSession()
         }
         .sheet(item: $selectedImageData) { imageData in
-            ImageViewer(image: imageData.image, isPresented: .constant(true))
+            ImageViewer(image: imageData.image, isPresented: .constant(true), showRemoveBackgroundButton: !isAutoRemoveBackground)
                 .onAppear {
                     print("シート表示: 画像サイズ \(imageData.image.size)")
                     print("シート表示前の確認: インデックス \(imageData.index), 画像サイズ \(imageData.image.size)")
+                    
+                    // 画像の参照が失われないように、明示的に保持する
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        // 画像が表示されていることを確認
+                        print("シート表示後の確認: 画像サイズ \(imageData.image.size)")
+                    }
                 }
+        }
+    }
+    
+    // 背景削除処理を行う関数
+    private func processImageWithBackgroundRemoval(_ image: UIImage) {
+        print("背景自動削除処理を開始します: 元画像サイズ \(image.size)")
+        print("処理開始時の保存画像数: \(cameraManager.savedImages.count)")
+        if let lastImage = cameraManager.savedImages.last {
+            print("処理開始時の最後の画像サイズ: \(lastImage.size)")
+        }
+        
+        Task {
+            let processedImage = await withCheckedContinuation({ continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    print("背景削除処理を実行中...")
+                    let result = removeBackground(from: image)
+                    print("背景削除処理完了: 結果 \(result != nil ? "成功" : "失敗")")
+                    if let result = result {
+                        print("処理後画像サイズ: \(result.size)")
+                    }
+                    continuation.resume(returning: result)
+                }
+            })
+            
+            // 処理済み画像をカメラマネージャーに保存
+            if let processedImage = processedImage {
+                DispatchQueue.main.async {
+                    print("処理済み画像をカメラマネージャーに適用します")
+                    
+                    // 現在の保存画像数を記録
+                    let currentCount = cameraManager.savedImages.count
+                    print("更新前の保存画像数: \(currentCount)")
+                    
+                    // 現在の画像配列の状態を確認
+                    print("--- 更新前の画像配列の状態 ---")
+                    for (i, img) in cameraManager.savedImages.enumerated() {
+                        print("インデックス \(i): サイズ \(img.size)")
+                    }
+                    print("------------------------------")
+                    
+                    // 画像を更新
+                    cameraManager.updateLastCapturedImage(with: processedImage)
+                    
+                    // 画面の更新を強制
+                    cameraManager.objectWillChange.send()
+                    
+                    // 更新後の画像配列の状態を確認
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        print("--- 更新後の画像配列の状態 ---")
+                        for (i, img) in cameraManager.savedImages.enumerated() {
+                            print("インデックス \(i): サイズ \(img.size)")
+                        }
+                        print("------------------------------")
+                        
+                        // サムネイルが更新されたことを確認
+                        if let lastImage = cameraManager.savedImages.last {
+                            print("更新後のサムネイル画像サイズ: \(lastImage.size)")
+                            print("更新後の保存画像数: \(cameraManager.savedImages.count)")
+                        }
+                    }
+                    
+                    // サムネイルギャラリーを強制的に更新
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        print("サムネイルギャラリー強制更新を実行")
+                        cameraManager.objectWillChange.send()
+                    }
+                }
+            } else {
+                print("背景削除処理に失敗しました")
+            }
         }
     }
 }
@@ -146,6 +267,7 @@ struct ImageViewer: View {
     @Environment(\.presentationMode) var presentationMode
     @State private var processedImage: UIImage?
     @State private var isProcessing = false
+    var showRemoveBackgroundButton: Bool = true
     
     var body: some View {
         ZStack {
@@ -185,29 +307,31 @@ struct ImageViewer: View {
                 
                 Spacer()
                 
-                // 背景削除ボタン
-                Button(action: {
-                    removeBackgroundAsync()
-                }) {
-                    HStack {
-                        if isProcessing {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                .padding(.trailing, 5)
-                        } else {
-                            Image(systemName: "scissors")
-                                .font(.system(size: 16))
+                // 背景削除ボタン（表示フラグがtrueの場合のみ表示）
+                if showRemoveBackgroundButton {
+                    Button(action: {
+                        removeBackgroundAsync()
+                    }) {
+                        HStack {
+                            if isProcessing {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .padding(.trailing, 5)
+                            } else {
+                                Image(systemName: "scissors")
+                                    .font(.system(size: 16))
+                            }
+                            Text(isProcessing ? "処理中..." : "背景を削除")
                         }
-                        Text(isProcessing ? "処理中..." : "背景を削除")
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(20)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(20)
+                    .disabled(isProcessing || processedImage != nil)
+                    .padding(.bottom, 20)
                 }
-                .disabled(isProcessing || processedImage != nil)
-                .padding(.bottom, 20)
             }
         }
         .presentationDetents([.large])
@@ -254,9 +378,10 @@ struct ThumbnailGalleryContainer: View {
                 if !images.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(spacing: 10) {
-                            ForEach(0..<images.count, id: \.self) { index in
-                                let displayIndex = images.count - 1 - index
-                                Image(uiImage: images[displayIndex]) // 新しい写真を左側に表示
+                            // 配列を逆順に処理して新しい写真を左側に表示
+                            ForEach(Array(images.enumerated().reversed()), id: \.0) { index, image in
+                                // 画像表示
+                                Image(uiImage: image)
                                     .resizable()
                                     .scaledToFill()
                                     .frame(width: 80, height: 80)
@@ -267,14 +392,24 @@ struct ThumbnailGalleryContainer: View {
                                     )
                                     .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 2)
                                     .onTapGesture {
-                                        print("タップされた画像インデックス: \(displayIndex)")
-                                        print("実際の配列内の位置: \(displayIndex), 配列の長さ: \(images.count)")
+                                        // 実際の配列内のインデックスを計算
+                                        let actualIndex = images.count - 1 - index
+                                        print("タップされた画像インデックス: \(actualIndex)")
+                                        print("配列の長さ: \(images.count)")
                                         
                                         // 直接画像を取得して渡す
-                                        let actualImage = images[displayIndex]
-                                        print("タップされた画像のサイズ: \(actualImage.size)")
-                                        onTapImage(actualImage, displayIndex)
+                                        print("タップされた画像のサイズ: \(image.size)")
+                                        
+                                        // 配列内の全画像のサイズを出力（デバッグ用）
+                                        print("--- 配列内の全画像情報 ---")
+                                        for (i, img) in images.enumerated() {
+                                            print("インデックス \(i): サイズ \(img.size)")
+                                        }
+                                        print("-------------------------")
+                                        
+                                        onTapImage(image, actualIndex)
                                     }
+                                    .id("thumbnail-\(index)-\(Date().timeIntervalSince1970)")
                             }
                         }
                         .padding(.horizontal)
