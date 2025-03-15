@@ -2,6 +2,8 @@ import SwiftUI
 
 struct CameraView: View {
     @StateObject var cameraManager = CameraManager()
+    @State private var selectedImageData: ImageData? = nil
+    @State private var isImageViewerPresented = false
     
     var body: some View {
         GeometryReader { geometry in
@@ -50,7 +52,7 @@ struct CameraView: View {
                                 .clipped() // はみ出た部分をクリップ
                             
                             // 撮影した写真（フラッシュ効果）
-                            if cameraManager.isTaken, let image = cameraManager.capturedImage {
+                            if cameraManager.isTaken, let _ = cameraManager.capturedImage {
                                 Color.white
                                     .opacity(0.3)
                                     .frame(width: geometry.size.width, height: geometry.size.height * 0.75)
@@ -82,8 +84,25 @@ struct CameraView: View {
                         Spacer()
                         
                         // 撮影した写真のサムネイル表示エリア - 常に固定サイズで表示
-                        ThumbnailGalleryContainer(images: cameraManager.savedImages)
-                            .frame(height: 120) // 固定高さ
+                        ThumbnailGalleryContainer(
+                            images: cameraManager.savedImages,
+                            onTapImage: { image, index in
+                                print("サムネイル写真がタップされました: インデックス \(index)")
+                                print("savedImages数: \(cameraManager.savedImages.count)")
+                                print("渡された画像のサイズ: \(image.size)")
+                                
+                                // インデックスが有効かチェック
+                                if index >= 0 && index < cameraManager.savedImages.count {
+                                    DispatchQueue.main.async {
+                                        self.selectedImageData = ImageData(id: UUID(), image: image, index: index)
+                                        self.isImageViewerPresented = true
+                                    }
+                                } else {
+                                    print("無効なインデックス: \(index)")
+                                }
+                            }
+                        )
+                        .frame(height: 120) // 固定高さ
                     }
                     .edgesIgnoringSafeArea(.all)
                 }
@@ -98,6 +117,13 @@ struct CameraView: View {
         .onDisappear {
             cameraManager.stopSession()
         }
+        .sheet(item: $selectedImageData) { imageData in
+            ImageViewer(image: imageData.image, isPresented: .constant(true))
+                .onAppear {
+                    print("シート表示: 画像サイズ \(imageData.image.size)")
+                    print("シート表示前の確認: インデックス \(imageData.index), 画像サイズ \(imageData.image.size)")
+                }
+        }
     }
 }
 
@@ -110,9 +136,53 @@ struct InstantButtonStyle: ButtonStyle {
     }
 }
 
+// 写真閲覧ビュー
+struct ImageViewer: View {
+    let image: UIImage
+    @Binding var isPresented: Bool
+    @Environment(\.presentationMode) var presentationMode
+    
+    var body: some View {
+        ZStack {
+            Color.black.edgesIgnoringSafeArea(.all)
+            
+            VStack {
+                // 閉じるボタン
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        print("閉じるボタンがタップされました")
+                        isPresented = false
+                        presentationMode.wrappedValue.dismiss()
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .resizable()
+                            .frame(width: 30, height: 30)
+                            .foregroundColor(.white)
+                            .padding()
+                    }
+                }
+                
+                Spacer()
+                
+                // 画像表示
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                
+                Spacer()
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
 // サムネイルギャラリーコンテナ - 常に一定の高さを確保
 struct ThumbnailGalleryContainer: View {
     let images: [UIImage]
+    var onTapImage: (UIImage, Int) -> Void
     
     var body: some View {
         VStack(spacing: 0) {
@@ -131,7 +201,8 @@ struct ThumbnailGalleryContainer: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(spacing: 10) {
                             ForEach(0..<images.count, id: \.self) { index in
-                                Image(uiImage: images[images.count - 1 - index]) // 新しい写真を左側に表示
+                                let displayIndex = images.count - 1 - index
+                                Image(uiImage: images[displayIndex]) // 新しい写真を左側に表示
                                     .resizable()
                                     .scaledToFill()
                                     .frame(width: 80, height: 80)
@@ -141,6 +212,15 @@ struct ThumbnailGalleryContainer: View {
                                             .stroke(Color.white, lineWidth: 2)
                                     )
                                     .shadow(color: .black.opacity(0.3), radius: 3, x: 0, y: 2)
+                                    .onTapGesture {
+                                        print("タップされた画像インデックス: \(displayIndex)")
+                                        print("実際の配列内の位置: \(displayIndex), 配列の長さ: \(images.count)")
+                                        
+                                        // 直接画像を取得して渡す
+                                        let actualImage = images[displayIndex]
+                                        print("タップされた画像のサイズ: \(actualImage.size)")
+                                        onTapImage(actualImage, displayIndex)
+                                    }
                             }
                         }
                         .padding(.horizontal)
@@ -155,4 +235,11 @@ struct ThumbnailGalleryContainer: View {
             }
         }
     }
+}
+
+// 画像データモデル
+struct ImageData: Identifiable {
+    let id: UUID
+    let image: UIImage
+    let index: Int
 } 
