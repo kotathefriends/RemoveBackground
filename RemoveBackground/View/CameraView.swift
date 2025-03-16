@@ -60,6 +60,10 @@ struct CameraView: View {
                         // ImageViewModelを作成
                         self.imageViewModel = ImageViewModel(imageData: imageData)
                         viewModel.isImageViewerPresented = true
+                    },
+                    onDeleteImage: { imageData in
+                        // 画像削除
+                        viewModel.deleteImage(imageData)
                     }
                 )
             }

@@ -86,6 +86,18 @@ class CameraViewModel: ObservableObject {
         self.isImageViewerPresented = true
     }
     
+    // 画像削除処理
+    func deleteImage(_ imageData: ImageData) {
+        // 配列から該当する画像を削除
+        if let index = cameraManager.savedImages.firstIndex(where: { $0.id == imageData.id }) {
+            cameraManager.savedImages.remove(at: index)
+            print("画像削除: ID \(imageData.id)")
+            
+            // UI更新を通知
+            objectWillChange.send()
+        }
+    }
+    
     // 背景削除処理を行う関数
     func processImageWithBackgroundRemoval(_ image: UIImage) -> UIImage? {
         // 画像サイズが大きすぎる場合はリサイズ
