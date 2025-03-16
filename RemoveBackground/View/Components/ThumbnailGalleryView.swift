@@ -47,11 +47,21 @@ struct ThumbnailGalleryView: View {
                             let displayImage = imageData.processedImage ?? imageData.originalImage
                             
                             ZStack(alignment: .topTrailing) {
-                                Image(uiImage: displayImage)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 80, height: 80)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                // 処理済み画像の場合は白背景を追加
+                                if imageData.processedImage != nil {
+                                    ZStack {
+                                        // 白背景
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .fill(Color.white)
+                                            .frame(width: 80, height: 80)
+                                        
+                                        // 処理済み画像
+                                        Image(uiImage: displayImage)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 80, height: 80)
+                                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    }
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 10)
                                             .stroke(Color.white, lineWidth: 2)
@@ -64,6 +74,26 @@ struct ThumbnailGalleryView: View {
                                         print("処理済み画像: \(imageData.processedImage != nil ? "あり" : "なし")")
                                         onTapImage(imageData)
                                     }
+                                } else {
+                                    // 元画像はそのまま表示
+                                    Image(uiImage: displayImage)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: 80, height: 80)
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 10)
+                                                .stroke(Color.white, lineWidth: 2)
+                                        )
+                                        .shadow(radius: 3)
+                                        .padding(5)
+                                        .onTapGesture {
+                                            print("サムネイルタップ: ID \(imageData.id)")
+                                            print("画像サイズ: \(imageData.originalImage.size)")
+                                            print("処理済み画像: \(imageData.processedImage != nil ? "あり" : "なし")")
+                                            onTapImage(imageData)
+                                        }
+                                }
                                 
                                 // 削除ボタン
                                 Button(action: {

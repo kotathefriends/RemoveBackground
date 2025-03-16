@@ -5,7 +5,7 @@ import CoreImage.CIFilterBuiltins
 
 /// 背景削除機能を提供するユーティリティクラス
 class BackgroundRemoval {
-    /// 画像から背景を削除し、白背景の画像を返す
+    /// 画像から背景を削除し、透明背景の画像を返す
     /// - Parameter image: 背景削除を行う元画像
     /// - Returns: 背景が削除された画像（失敗時はnil）
     static func removeBackground(from image: UIImage) -> UIImage? {
@@ -27,7 +27,7 @@ class BackgroundRemoval {
         // マスクを膨らませて境界線を調整
         let dilatedMask = dilateMask(maskImage, radius: 3.0)
         
-        // マスクを適用して背景を白に変更
+        // マスクを適用して背景を透明に変更
         let outputImage = applyMask(mask: dilatedMask, to: inputImage)
         
         // CIImageをUIImageに変換して返す
@@ -87,17 +87,17 @@ class BackgroundRemoval {
         return dilatedMask
     }
 
-    /// マスクを使用して画像の背景を白に変更
+    /// マスクを使用して画像の背景を透明に変更
     /// - Parameters:
     ///   - mask: 適用するマスク（白い部分が前景）
     ///   - image: 入力画像
-    /// - Returns: 背景が白に変更された画像
+    /// - Returns: 背景が透明に変更された画像
     private static func applyMask(mask: CIImage, to image: CIImage) -> CIImage {
-        // 白い背景を作成
-        let whiteBackground = CIImage(color: CIColor(red: 1, green: 1, blue: 1))
+        // 透明背景を作成
+        let transparentBackground = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0))
             .cropped(to: image.extent)
         
-        // マスクを使って前景と白背景を合成
+        // マスクを使って前景と透明背景を合成
         guard let blendFilter = CIFilter(name: "CIBlendWithMask") else {
             print("マスクブレンドフィルターの作成に失敗しました")
             return image
@@ -105,7 +105,7 @@ class BackgroundRemoval {
         
         blendFilter.setValue(image, forKey: kCIInputImageKey)
         blendFilter.setValue(mask, forKey: kCIInputMaskImageKey)
-        blendFilter.setValue(whiteBackground, forKey: kCIInputBackgroundImageKey)
+        blendFilter.setValue(transparentBackground, forKey: kCIInputBackgroundImageKey)
         
         guard let outputImage = blendFilter.outputImage else {
             print("マスク適用エラー: フィルター出力がnilです")
@@ -132,7 +132,7 @@ class BackgroundRemoval {
             return UIImage()
         }
         
-        // 元の画像の向きを適用してUIImageを作成
+        // 透明度を保持するためのUIImage作成
         let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: orientation)
         print("UIImage変換成功: サイズ \(uiImage.size)")
         return uiImage
