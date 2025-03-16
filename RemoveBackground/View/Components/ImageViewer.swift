@@ -11,29 +11,28 @@ struct ImageViewer: View {
             
             VStack(spacing: 0) {
                 if showControls {
-                    HStack(spacing: 4) {
-                        if viewModel.hasProcessedImage {
+                    // 元画像/処理済み画像の切り替えインジケーター
+                    if viewModel.hasProcessedImage {
+                        HStack(spacing: 4) {
                             Rectangle()
                                 .fill(!viewModel.showOriginal ? Color.white : Color.white.opacity(0.5))
                                 .frame(height: 3)
                                 .onTapGesture {
                                     viewModel.showOriginal = false
                                 }
+                            
+                            Rectangle()
+                                .fill(viewModel.showOriginal ? Color.white : Color.white.opacity(0.5))
+                                .frame(height: 3)
+                                .onTapGesture {
+                                    viewModel.showOriginal = true
+                                }
                         }
-                        
-                        Rectangle()
-                            .fill(viewModel.showOriginal ? Color.white : Color.white.opacity(0.5))
-                            .frame(height: 3)
-                            .onTapGesture {
-                                viewModel.showOriginal = true
-                            }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 10)
+                        .padding(.bottom, 5)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 10)
-                    .padding(.bottom, 5)
-                }
-                
-                if showControls {
+                    
                     HStack {
                         Button(action: {
                             isPresented = false
@@ -59,6 +58,7 @@ struct ImageViewer: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onTapGesture {
+                        // 画像タップで元画像と処理済み画像を切り替え
                         viewModel.toggleImageDisplay()
                     }
                     .onLongPressGesture(minimumDuration: 0.3) {
@@ -69,28 +69,17 @@ struct ImageViewer: View {
                 
                 Spacer()
                 
-                if !viewModel.hasProcessedImage && showControls {
-                    Button(action: {
-                        viewModel.removeBackgroundAsync()
-                    }) {
-                        HStack {
-                            if viewModel.isProcessing {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    .padding(.trailing, 5)
-                            }
-                            Text("背景を削除")
-                                .foregroundColor(.white)
-                                .font(.system(size: 16, weight: .medium))
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(Color.blue)
-                        .cornerRadius(20)
-                    }
-                    .disabled(viewModel.isProcessing)
-                    .padding(.bottom, 30)
+                if viewModel.isProcessing && showControls {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        .padding(.bottom, 30)
                 }
+            }
+        }
+        .onAppear {
+            // 画面表示時に自動的に背景削除を開始
+            if !viewModel.hasProcessedImage && !viewModel.isProcessing {
+                viewModel.removeBackgroundAsync()
             }
         }
     }

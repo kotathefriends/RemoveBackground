@@ -11,7 +11,6 @@ class CameraViewModel: ObservableObject {
     // UI状態
     @Published var selectedImageData: ImageData?
     @Published var isImageViewerPresented = false
-    @Published var isAutoRemoveBackground = false
     
     // 最後に撮影した写真のID
     private var lastCapturedImageID: UUID?
@@ -72,11 +71,9 @@ class CameraViewModel: ObservableObject {
         // 配列に追加
         cameraManager.savedImages.append(newImageData)
         
-        // 背景自動削除がオンの場合、この写真に背景削除が必要とマーク
-        if isAutoRemoveBackground {
-            needsBackgroundRemovalIDs.insert(newImageData.id)
-            processBackgroundRemoval()
-        }
+        // 常に背景削除を適用
+        needsBackgroundRemovalIDs.insert(newImageData.id)
+        processBackgroundRemoval()
         
         // UI更新を通知
         objectWillChange.send()
@@ -97,11 +94,9 @@ class CameraViewModel: ObservableObject {
                 // 最後に撮影した写真のIDを更新
                 self.lastCapturedImageID = lastImage.id
                 
-                // 背景自動削除がオンの場合、この写真に背景削除が必要とマーク
-                if self.isAutoRemoveBackground {
-                    self.needsBackgroundRemovalIDs.insert(lastImage.id)
-                    self.processBackgroundRemoval()
-                }
+                // 常に背景削除を適用
+                self.needsBackgroundRemovalIDs.insert(lastImage.id)
+                self.processBackgroundRemoval()
             }
             
             // 明示的にUI更新を通知

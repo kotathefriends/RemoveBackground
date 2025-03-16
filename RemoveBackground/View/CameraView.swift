@@ -16,23 +16,6 @@ struct CameraView: View {
                 .edgesIgnoringSafeArea(.all)
             
             VStack {
-                HStack {
-                    Toggle(isOn: $viewModel.isAutoRemoveBackground) {
-                        Text("背景自動削除")
-                            .foregroundColor(.white)
-                            .font(.system(size: 14, weight: .medium))
-                    }
-                    .toggleStyle(SwitchToggleStyle(tint: .blue))
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                    .background(Color.black.opacity(0.6))
-                    .cornerRadius(20)
-                    
-                    Spacer()
-                }
-                .padding(.horizontal)
-                .padding(.top, 50)
-                
                 Spacer()
                 
                 Button(action: {
