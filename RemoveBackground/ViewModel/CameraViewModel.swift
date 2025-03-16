@@ -136,6 +136,68 @@ class CameraViewModel: ObservableObject {
         }
     }
     
+    // ライブラリから写真を追加
+    func addImageFromLibrary(_ image: UIImage) {
+        print("ライブラリから写真を追加: サイズ \(image.size)")
+        
+        // 画像を3:4の比率に調整
+        let adjustedImage = adjustImageToAspectRatio(image, targetRatio: 3.0/4.0)
+        print("調整後のサイズ: \(adjustedImage.size)")
+        
+        // 新しいImageDataを作成
+        let newImageData = ImageData(originalImage: adjustedImage)
+        
+        // 配列に追加
+        cameraManager.savedImages.append(newImageData)
+        
+        // 背景自動削除がオンの場合、この写真に背景削除が必要とマーク
+        if isAutoRemoveBackground {
+            needsBackgroundRemovalIDs.insert(newImageData.id)
+            
+            // 少し遅延させて背景削除処理を実行（UIの更新を待つため）
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.processMarkedImages()
+                
+                // 処理後に明示的にUI更新を通知
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.objectWillChange.send()
+                }
+            }
+        }
+        
+        // UI更新を通知
+        objectWillChange.send()
+    }
+    
+    // 画像を指定のアスペクト比に調整する関数
+    private func adjustImageToAspectRatio(_ image: UIImage, targetRatio: CGFloat) -> UIImage {
+        let imageRatio = image.size.width / image.size.height
+        
+        // 現在の比率が目標の比率と異なる場合のみ調整
+        if abs(imageRatio - targetRatio) > 0.01 {
+            var newSize: CGSize
+            
+            if imageRatio > targetRatio {
+                // 画像が横長すぎる場合、幅を調整
+                newSize = CGSize(width: image.size.height * targetRatio, height: image.size.height)
+            } else {
+                // 画像が縦長すぎる場合、高さを調整
+                newSize = CGSize(width: image.size.width, height: image.size.width / targetRatio)
+            }
+            
+            // 画像の中央部分を切り抜く
+            let x = (image.size.width - newSize.width) / 2
+            let y = (image.size.height - newSize.height) / 2
+            let cropRect = CGRect(x: x, y: y, width: newSize.width, height: newSize.height)
+            
+            if let cgImage = image.cgImage?.cropping(to: cropRect) {
+                return UIImage(cgImage: cgImage, scale: image.scale, orientation: image.imageOrientation)
+            }
+        }
+        
+        return image
+    }
+    
     // 背景削除処理を行う関数
     func processImageWithBackgroundRemoval(_ image: UIImage) -> UIImage? {
         // 画像サイズが大きすぎる場合はリサイズ

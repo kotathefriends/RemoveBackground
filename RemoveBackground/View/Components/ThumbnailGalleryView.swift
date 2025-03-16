@@ -1,10 +1,12 @@
 import SwiftUI
+import PhotosUI
 
 // サムネイルギャラリー表示用のビュー
 struct ThumbnailGalleryView: View {
     var images: [ImageData]
     var onTapImage: (ImageData) -> Void
     var onDeleteImage: (ImageData) -> Void
+    var onTapAlbum: () -> Void // アルバムボタンタップ時のコールバック
     
     var body: some View {
         ZStack {
@@ -15,6 +17,27 @@ struct ThumbnailGalleryView: View {
             // サムネイル表示
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 10) {
+                    // アルバムボタン（常に一番左に固定）
+                    Button(action: {
+                        onTapAlbum()
+                    }) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.white.opacity(0.2))
+                                .frame(width: 80, height: 80)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(Color.white, lineWidth: 2)
+                                )
+                                .shadow(radius: 3)
+                            
+                            Image(systemName: "photo.on.rectangle")
+                                .font(.system(size: 30))
+                                .foregroundColor(.white)
+                        }
+                        .padding(5)
+                    }
+                    
                     // 常に表示する5つの枠組み
                     ForEach(0..<5, id: \.self) { index in
                         // インデックスに対応する画像があるかチェック

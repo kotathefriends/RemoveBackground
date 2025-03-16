@@ -1,8 +1,11 @@
 import SwiftUI
+import PhotosUI
+import UIKit
 
 struct CameraView: View {
     @StateObject var viewModel = CameraViewModel()
     @State private var imageViewModel: ImageViewModel?
+    @State private var isImagePickerPresented = false
     
     var body: some View {
         ZStack {
@@ -64,6 +67,10 @@ struct CameraView: View {
                     onDeleteImage: { imageData in
                         // 画像削除
                         viewModel.deleteImage(imageData)
+                    },
+                    onTapAlbum: {
+                        // 写真選択画面を表示
+                        isImagePickerPresented = true
                     }
                 )
             }
@@ -88,6 +95,54 @@ struct CameraView: View {
                     isPresented: $viewModel.isImageViewerPresented
                 )
             }
+        }
+        .sheet(isPresented: $isImagePickerPresented) {
+            ImagePicker(onImageSelected: { image in
+                if let image = image {
+                    viewModel.addImageFromLibrary(image)
+                }
+            })
+        }
+    }
+}
+
+// UIImagePickerControllerを使用した写真選択
+struct ImagePicker: UIViewControllerRepresentable {
+    var onImageSelected: (UIImage?) -> Void
+    @Environment(\.presentationMode) private var presentationMode
+    
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.delegate = context.coordinator
+        picker.sourceType = .photoLibrary
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: ImagePicker
+        
+        init(_ parent: ImagePicker) {
+            self.parent = parent
+        }
+        
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            if let image = info[.originalImage] as? UIImage {
+                parent.onImageSelected(image)
+            } else {
+                parent.onImageSelected(nil)
+            }
+            parent.presentationMode.wrappedValue.dismiss()
+        }
+        
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.onImageSelected(nil)
+            parent.presentationMode.wrappedValue.dismiss()
         }
     }
 } 
