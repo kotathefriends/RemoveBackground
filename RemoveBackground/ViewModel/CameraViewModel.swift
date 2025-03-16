@@ -13,6 +13,11 @@ class CameraViewModel: ObservableObject {
     @Published var isImageViewerPresented = false
     @Published var isAutoRemoveBackground = false
     
+    // 最後に撮影した写真のID
+    private var lastCapturedImageID: UUID?
+    // 背景削除が必要な写真のIDを保存
+    private var needsBackgroundRemovalIDs: Set<UUID> = []
+    
     // 初期化
     init() {
         // カメラマネージャーの写真撮影通知を監視
@@ -23,24 +28,34 @@ class CameraViewModel: ObservableObject {
     private func setupSubscriptions() {
         // カメラマネージャーの変更を監視
         cameraManager.objectWillChange.sink { [weak self] _ in
+            guard let self = self else { return }
+            
             // 新しい写真が撮影されたかチェック
-            if let lastImage = self?.cameraManager.savedImages.last,
-               lastImage.processedImage == nil,
-               self?.isAutoRemoveBackground == true {
-                // 少し遅延させて背景削除処理を実行（UIの更新を待つため）
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    self?.processLastImage()
+            if let lastImage = self.cameraManager.savedImages.last,
+               self.lastCapturedImageID != lastImage.id {
+                
+                // 最後に撮影した写真のIDを更新
+                self.lastCapturedImageID = lastImage.id
+                
+                // 背景自動削除がオンの場合、この写真に背景削除が必要とマーク
+                if self.isAutoRemoveBackground {
+                    self.needsBackgroundRemovalIDs.insert(lastImage.id)
                     
-                    // 処理後に明示的にUI更新を通知
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        self?.objectWillChange.send()
+                    // 少し遅延させて背景削除処理を実行（UIの更新を待つため）
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        self.processMarkedImages()
+                        
+                        // 処理後に明示的にUI更新を通知
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            self.objectWillChange.send()
+                        }
                     }
                 }
             }
             
             // 明示的にUI更新を通知
             DispatchQueue.main.async {
-                self?.objectWillChange.send()
+                self.objectWillChange.send()
             }
         }.store(in: &cancellables)
     }
@@ -63,20 +78,40 @@ class CameraViewModel: ObservableObject {
         cameraManager.takePicture()
     }
     
-    // 最後に撮影した画像を処理
-    private func processLastImage() {
-        guard let lastImage = cameraManager.savedImages.last else {
-            print("処理する画像がありません")
+    // 背景削除が必要とマークされた画像を処理
+    private func processMarkedImages() {
+        // 処理が必要な画像がない場合は終了
+        if needsBackgroundRemovalIDs.isEmpty {
             return
         }
         
-        print("背景削除処理開始: 画像サイズ \(lastImage.originalImage.size)")
-        
-        // 背景削除処理を実行
-        if let processedImage = processImageWithBackgroundRemoval(lastImage.originalImage) {
-            // 処理済み画像を設定
-            cameraManager.updateLastCapturedImage(with: processedImage)
+        // 処理が必要な画像を探して処理
+        for imageID in needsBackgroundRemovalIDs {
+            if let index = cameraManager.savedImages.firstIndex(where: { $0.id == imageID }),
+               cameraManager.savedImages[index].processedImage == nil {
+                
+                let imageData = cameraManager.savedImages[index]
+                print("背景削除処理開始: ID \(imageData.id), 画像サイズ \(imageData.originalImage.size)")
+                
+                // 背景削除処理を実行
+                if let processedImage = processImageWithBackgroundRemoval(imageData.originalImage) {
+                    // 処理済み画像を設定
+                    let updatedImageData = ImageData(
+                        originalImage: imageData.originalImage,
+                        processedImage: processedImage
+                    )
+                    
+                    // 配列内の画像を更新
+                    cameraManager.savedImages[index] = updatedImageData
+                    
+                    // 処理済みのIDを削除
+                    needsBackgroundRemovalIDs.remove(imageID)
+                }
+            }
         }
+        
+        // UI更新を通知
+        objectWillChange.send()
     }
     
     // サムネイル画像タップ処理
@@ -92,6 +127,9 @@ class CameraViewModel: ObservableObject {
         if let index = cameraManager.savedImages.firstIndex(where: { $0.id == imageData.id }) {
             cameraManager.savedImages.remove(at: index)
             print("画像削除: ID \(imageData.id)")
+            
+            // 処理待ちリストからも削除
+            needsBackgroundRemovalIDs.remove(imageData.id)
             
             // UI更新を通知
             objectWillChange.send()
