@@ -12,18 +12,15 @@ struct ThumbnailGalleryView: View {
             RoundedRectangle(cornerRadius: 15)
                 .fill(Color.black.opacity(0.7))
             
-            // 画像がない場合のプレースホルダー
-            if images.isEmpty {
-                Text("写真がありません")
-                    .foregroundColor(.white)
-                    .font(.system(size: 14))
-            } else {
-                // サムネイル表示
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 10) {
-                        // 最新の画像を左に表示するために逆順で表示
-                        ForEach(images.reversed()) { imageData in
-                            // 処理済み画像があればそれを表示、なければオリジナル画像を表示
+            // サムネイル表示
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 10) {
+                    // 常に表示する5つの枠組み
+                    ForEach(0..<5, id: \.self) { index in
+                        // インデックスに対応する画像があるかチェック
+                        if index < images.count {
+                            // 画像がある場合はサムネイルを表示
+                            let imageData = images.reversed()[index]
                             let displayImage = imageData.processedImage ?? imageData.originalImage
                             
                             ZStack(alignment: .topTrailing) {
@@ -56,10 +53,19 @@ struct ThumbnailGalleryView: View {
                                 }
                                 .padding(5)
                             }
+                        } else {
+                            // 画像がない場合は空の枠を表示
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.white.opacity(0.5), lineWidth: 2) // 枠線の太さを統一
+                                .frame(width: 80, height: 80)
+                                .background(Color.white.opacity(0.1))
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .shadow(radius: 3)
+                                .padding(5)
                         }
                     }
-                    .padding(.horizontal, 10)
                 }
+                .padding(.horizontal, 10)
             }
         }
         .frame(height: 120)
