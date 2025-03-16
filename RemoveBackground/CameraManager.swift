@@ -13,13 +13,9 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
     @Published var isError = false
     @Published var errorMessage = ""
     
-    // 撮影した写真を保存する配列（ImageDataモデルを使用）
     @Published var savedImages: [ImageData] = []
     
-    // カメラセットアップ完了フラグ
     private var isSetup = false
-    
-    // カメラ設定
     private var photoData: Data?
     
     override init() {
@@ -63,36 +59,30 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
         do {
             session.beginConfiguration()
             
-            // デバイス設定
             guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
                 handleError(message: "カメラデバイスが見つかりません")
                 return
             }
             
-            // 入力設定
             let input = try AVCaptureDeviceInput(device: device)
             if session.canAddInput(input) {
                 session.addInput(input)
             }
             
-            // 出力設定
             if session.canAddOutput(output) {
                 session.addOutput(output)
             }
             
-            // 写真出力の設定
             if let photoConnection = output.connection(with: .video) {
                 if photoConnection.isVideoOrientationSupported {
                     photoConnection.videoOrientation = .portrait
                 }
             }
             
-            // 3:4のアスペクト比に設定
             session.sessionPreset = .photo
             
             session.commitConfiguration()
             
-            // セッション開始（プレビューレイヤーの設定前に開始）
             startSession()
             
             print("カメラセットアップ完了")
@@ -112,7 +102,6 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
                     self.isTaken = true
                 }
                 
-                // フラッシュ効果を一時的に表示
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     withAnimation {
                         self.isTaken = false
@@ -149,7 +138,6 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
         }
     }
     
-    // 写真撮影完了時の処理
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         if let error = error {
             print("写真撮影エラー: \(error.localizedDescription)")
@@ -168,14 +156,11 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
                 self.capturedImage = image
                 print("写真撮影成功: サイズ \(image.size)")
                 
-                // 画像を保存
                 let newImageData = ImageData(originalImage: image)
                 self.savedImages.append(newImageData)
                 
-                // 画面更新を通知
                 self.objectWillChange.send()
                 
-                // 少し遅延させて再度通知（UI更新を確実にするため）
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     self.objectWillChange.send()
                     print("保存された画像数: \(self.savedImages.count)")

@@ -9,19 +9,14 @@ struct CameraView: View {
     
     var body: some View {
         ZStack {
-            // 背景色を黒に設定
             Color.black
                 .edgesIgnoringSafeArea(.all)
             
-            // カメラプレビュー
             CameraPreview(cameraManager: viewModel.cameraManager)
                 .edgesIgnoringSafeArea(.all)
             
-            // UI要素
             VStack {
-                // 上部コントロール
                 HStack {
-                    // 背景自動削除トグル
                     Toggle(isOn: $viewModel.isAutoRemoveBackground) {
                         Text("背景自動削除")
                             .foregroundColor(.white)
@@ -40,7 +35,6 @@ struct CameraView: View {
                 
                 Spacer()
                 
-                // 撮影ボタン
                 Button(action: {
                     viewModel.takePicture()
                 }) {
@@ -56,26 +50,21 @@ struct CameraView: View {
                 .buttonStyle(InstantButtonStyle())
                 .padding(.bottom, 30)
                 
-                // サムネイルギャラリー
                 ThumbnailGalleryView(
                     images: viewModel.cameraManager.savedImages,
                     onTapImage: { imageData in
-                        // ImageViewModelを作成
                         self.imageViewModel = ImageViewModel(imageData: imageData)
                         viewModel.isImageViewerPresented = true
                     },
                     onDeleteImage: { imageData in
-                        // 画像削除
                         viewModel.deleteImage(imageData)
                     },
                     onTapAlbum: {
-                        // 写真選択画面を表示
                         isImagePickerPresented = true
                     }
                 )
             }
             
-            // 撮影時のフラッシュ効果
             if viewModel.cameraManager.isTaken {
                 Color.white
                     .edgesIgnoringSafeArea(.all)
@@ -91,7 +80,7 @@ struct CameraView: View {
         .sheet(isPresented: $viewModel.isImageViewerPresented) {
             if let imageViewModel = self.imageViewModel {
                 ImageViewer(
-                    imageViewModel: imageViewModel,
+                    viewModel: imageViewModel,
                     isPresented: $viewModel.isImageViewerPresented
                 )
             }
@@ -106,7 +95,6 @@ struct CameraView: View {
     }
 }
 
-// UIImagePickerControllerを使用した写真選択
 struct ImagePicker: UIViewControllerRepresentable {
     var onImageSelected: (UIImage?) -> Void
     @Environment(\.presentationMode) private var presentationMode
