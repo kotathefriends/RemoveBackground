@@ -4,6 +4,7 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import Combine
 
+@available(iOS 18.0, *)
 class CameraViewModel: ObservableObject {
     // カメラマネージャー
     @Published var cameraManager = CameraManager()
@@ -110,49 +111,68 @@ class CameraViewModel: ObservableObject {
     private func processBackgroundRemoval() {
         // 少し遅延させて背景削除処理を実行（UIの更新を待つため）
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            self.processMarkedImages()
-            
-            // 処理後に明示的にUI更新を通知
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                self.objectWillChange.send()
+            Task {
+                await self.processMarkedImages()
+                
+                // 処理後に明示的にUI更新を通知
+                DispatchQueue.main.async {
+                    self.objectWillChange.send()
+                }
             }
         }
     }
     
     // 背景削除が必要とマークされた画像を処理
-    private func processMarkedImages() {
+    @available(iOS 18.0, *)
+    private func processMarkedImages() async {
         // 処理が必要な画像がない場合は終了
         if needsBackgroundRemovalIDs.isEmpty {
             return
         }
         
+        // 処理が必要な画像IDのコピーを作成（処理中にセットが変更される可能性があるため）
+        let idsToProcess = needsBackgroundRemovalIDs
+        
+        // 処理結果を保持する配列
+        var updatedImages: [(index: Int, data: ImageData)] = []
+        var processedIDs: Set<UUID> = []
+        
         // 処理が必要な画像を探して処理
-        for imageID in needsBackgroundRemovalIDs {
+        for imageID in idsToProcess {
             if let index = cameraManager.savedImages.firstIndex(where: { $0.id == imageID }),
                cameraManager.savedImages[index].processedImage == nil {
                 
                 let imageData = cameraManager.savedImages[index]
                 print("背景削除処理開始: ID \(imageData.id), 画像サイズ \(imageData.originalImage.size)")
                 
-                // 背景削除処理を実行
-                if let processedImage = ImageProcessor.processImageWithBackgroundRemoval(imageData.originalImage) {
-                    // 処理済み画像を設定
-                    let updatedImageData = ImageData(
-                        originalImage: imageData.originalImage,
-                        processedImage: processedImage
-                    )
-                    
-                    // 配列内の画像を更新
-                    cameraManager.savedImages[index] = updatedImageData
-                    
-                    // 処理済みのIDを削除
-                    needsBackgroundRemovalIDs.remove(imageID)
-                }
+                // 背景削除処理を実行（非同期）
+                let processedImage = await ImageProcessor.processImageWithBackgroundRemoval(imageData.originalImage)
+                
+                // 処理済み画像を設定
+                let updatedImageData = ImageData(
+                    originalImage: imageData.originalImage,
+                    processedImage: processedImage
+                )
+                
+                // 更新情報を保存
+                updatedImages.append((index: index, data: updatedImageData))
+                processedIDs.insert(imageID)
             }
         }
         
-        // UI更新を通知
-        objectWillChange.send()
+        // UI更新と@Publishedプロパティの更新はメインスレッドで行う
+        await MainActor.run {
+            // 配列内の画像を更新
+            for update in updatedImages {
+                cameraManager.savedImages[update.index] = update.data
+            }
+            
+            // 処理済みのIDを削除
+            needsBackgroundRemovalIDs.subtract(processedIDs)
+            
+            // UI更新を通知
+            self.objectWillChange.send()
+        }
     }
     
     // サムネイル画像タップ処理
@@ -195,7 +215,8 @@ struct ImageProcessor {
     }
     
     // 背景削除処理を行う関数
-    static func processImageWithBackgroundRemoval(_ image: UIImage) -> UIImage? {
+    @available(iOS 18.0, *)
+    static func processImageWithBackgroundRemoval(_ image: UIImage) async -> UIImage {
         // 画像サイズが大きすぎる場合はリサイズ
         let maxDimension: CGFloat = 2048.0
         var processedImage = image
@@ -206,14 +227,22 @@ struct ImageProcessor {
             print("リサイズ後: \(processedImage.size)")
         }
         
-        // 背景削除処理
-        let result = BackgroundRemoval.removeBackground(from: processedImage)
+        // 背景削除処理（非同期）
+        let resultImage = await BackgroundRemoval.removeBackground(from: processedImage)
         
-        if let resultImage = result {
-            print("背景削除成功: サイズ \(resultImage.size)")
-            return resultImage
+        print("背景削除成功: サイズ \(resultImage.size)")
+        return resultImage
+    }
+    
+    // iOS 18未満用のダミー実装
+    static func processImageWithBackgroundRemoval(_ image: UIImage) -> UIImage? {
+        if #available(iOS 18.0, *) {
+            // iOS 18以上の場合はエラー（非同期版を使用すべき）
+            assertionFailure("iOS 18以上ではasync版を使用してください")
+            return nil
         } else {
-            print("背景削除失敗")
+            // iOS 18未満の場合は未サポート
+            print("背景削除はiOS 18以上が必要です")
             return nil
         }
     }
