@@ -1,101 +1,61 @@
 import SwiftUI
 import Vision
 import CoreImage
-import CoreImage.CIFilterBuiltins
 
-/// 背景削除機能を提供するユーティリティクラス
+/// 背景除去機能を提供するユーティリティ
 class BackgroundRemoval {
-    /// 画像から背景を削除し、透明背景の画像を返す
-    /// - Parameter image: 背景削除を行う元画像
-    /// - Returns: 背景が削除された画像（失敗時はnil）
+    /// 画像の背景を除去して透明背景の画像を返す
+    /// - Parameter image: 処理する元画像
+    /// - Returns: 背景が除去された画像（失敗時はnil）
     static func removeBackground(from image: UIImage) -> UIImage? {
-        // 入力画像をCIImageに変換
-        guard let inputImage = CIImage(image: image) else {
-            print("CIImageの作成に失敗しました")
+        // ローカルのUIImageからCIImageを取得
+        guard let ciImage = CIImage(image: image) else {
+            print("CIImageの変換に失敗しました")
             return nil
         }
         
-        // 元の画像の向きを保存
+        // 元の画像の向きを保持
         let originalOrientation = image.imageOrientation
         
-        // 前景マスクを生成
-        guard let maskImage = createMask(from: inputImage) else {
-            print("マスクの作成に失敗しました")
-            return nil
-        }
+        // VNImageRequestHandlerの生成
+        let handler = VNImageRequestHandler(ciImage: ciImage)
         
-        // マスクを膨らませて境界線を調整
-        let dilatedMask = dilateMask(maskImage, radius: 3.0)
-        
-        // マスクを適用して背景を透明に変更
-        let outputImage = applyMask(mask: dilatedMask, to: inputImage)
-        
-        // CIImageをUIImageに変換して返す
-        return convertToUIImage(ciImage: outputImage, orientation: originalOrientation)
-    }
-
-    /// Vision APIを使用して前景マスクを生成
-    /// - Parameter inputImage: 入力画像
-    /// - Returns: 前景マスク画像（失敗時はnil）
-    private static func createMask(from inputImage: CIImage) -> CIImage? {
+        // VNGenerateForegroundInstanceMaskRequestの生成
         let request = VNGenerateForegroundInstanceMaskRequest()
-        let handler = VNImageRequestHandler(ciImage: inputImage)
         
         do {
+            // リクエストを実行
             try handler.perform([request])
             
-            if let result = request.results?.first {
-                do {
-                    print("マスク生成: インスタンス数 \(result.allInstances.count)")
-                    let mask = try result.generateScaledMaskForImage(forInstances: result.allInstances, from: handler)
-                    print("マスク生成成功: サイズ \(CVPixelBufferGetWidth(mask))x\(CVPixelBufferGetHeight(mask))")
-                    return CIImage(cvPixelBuffer: mask)
-                } catch {
-                    print("マスク生成エラー (スケーリング): \(error)")
-                    return nil
+            // 結果を取得
+            if let observation = request.results?.first {
+                // マスクを生成（背景以外の全インスタンス）
+                if let mask = try? observation.generateScaledMaskForImage(
+                    forInstances: observation.allInstances,
+                    from: handler
+                ) {
+                    // マスクをCIImageに変換
+                    let maskImage = CIImage(cvPixelBuffer: mask)
+                    
+                    // マスクを適用して背景を透明に変更
+                    let outputImage = applyMask(mask: maskImage, to: ciImage)
+                    
+                    // CIImageをUIImageに変換
+                    return convertToUIImage(ciImage: outputImage, orientation: originalOrientation)
                 }
-            } else {
-                print("マスク生成エラー: 結果がありません")
-                return nil
             }
         } catch {
-            print("マスク生成エラー (リクエスト実行): \(error)")
-            return nil
+            print("背景除去処理でエラーが発生: \(error)")
         }
+        
+        // 処理に失敗した場合はnilを返す
+        return nil
     }
-
-    /// マスクを膨張させて境界線を調整
-    /// - Parameters:
-    ///   - mask: 入力マスク
-    ///   - radius: 膨張半径（大きいほど境界線が外側に広がる）
-    /// - Returns: 膨張処理後のマスク
-    private static func dilateMask(_ mask: CIImage, radius: CGFloat) -> CIImage {
-        guard let dilateFilter = CIFilter(name: "CIMorphologyMaximum") else {
-            print("膨張フィルターの作成に失敗しました")
-            return mask
-        }
-        
-        dilateFilter.setValue(mask, forKey: kCIInputImageKey)
-        dilateFilter.setValue(radius, forKey: "inputRadius")
-        
-        guard let dilatedMask = dilateFilter.outputImage else {
-            print("マスク膨張処理に失敗しました")
-            return mask
-        }
-        
-        print("マスク膨張処理完了")
-        return dilatedMask
-    }
-
+    
     /// マスクを使用して画像の背景を透明に変更
-    /// - Parameters:
-    ///   - mask: 適用するマスク（白い部分が前景）
-    ///   - image: 入力画像
-    /// - Returns: 背景が透明に変更された画像
     private static func applyMask(mask: CIImage, to image: CIImage) -> CIImage {
         // 透明背景を作成
-        let transparentBackground = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0))
-            .cropped(to: image.extent)
+        let transparentBackground = CIImage.empty()
         
         // マスクを使って前景と透明背景を合成
         guard let blendFilter = CIFilter(name: "CIBlendWithMask") else {
@@ -114,12 +74,8 @@ class BackgroundRemoval {
         
         return outputImage
     }
-
+    
     /// CIImageをUIImageに変換
-    /// - Parameters:
-    ///   - ciImage: 変換するCIImage
-    ///   - orientation: 画像の向き
-    /// - Returns: 変換後のUIImage
     private static func convertToUIImage(ciImage: CIImage, orientation: UIImage.Orientation = .up) -> UIImage {
         // 高品質な変換を行うためのコンテキストを作成
         let context = CIContext(options: [
@@ -134,7 +90,31 @@ class BackgroundRemoval {
         
         // 透明度を保持するためのUIImage作成
         let uiImage = UIImage(cgImage: cgImage, scale: 1.0, orientation: orientation)
-        print("UIImage変換成功: サイズ \(uiImage.size)")
         return uiImage
     }
+}
+
+// MARK: - UIImage拡張
+
+extension UIImage {
+    // CVPixelBufferからUIImageを生成する便利イニシャライザ
+    convenience init?(pixelBuffer: CVPixelBuffer) {
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        let context = CIContext(options: [.useSoftwareRenderer: false])
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
+            return nil
+        }
+        self.init(cgImage: cgImage)
+    }
+    
+    // 画像の向きを指定して新しいUIImageを返す
+    func withOrientation(_ orientation: UIImage.Orientation) -> UIImage {
+        if self.imageOrientation == orientation {
+            return self
+        }
+        guard let cgImage = self.cgImage else { return self }
+        return UIImage(cgImage: cgImage, scale: scale, orientation: orientation)
+    }
 } 
+
+
