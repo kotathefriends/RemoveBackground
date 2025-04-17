@@ -146,12 +146,13 @@ class CameraViewModel: ObservableObject {
                 print("背景削除処理開始: ID \(imageData.id), 画像サイズ \(imageData.originalImage.size)")
                 
                 // 背景削除処理を実行（非同期）
-                let processedImage = await ImageProcessor.processImageWithBackgroundRemoval(imageData.originalImage)
+                let (processedImage, mask) = await BackgroundRemoval.removeBackground(from: imageData.originalImage)
                 
                 // 処理済み画像を設定
                 let updatedImageData = ImageData(
                     originalImage: imageData.originalImage,
-                    processedImage: processedImage
+                    processedImage: processedImage,
+                    maskCGImage: mask
                 )
                 
                 // 更新情報を保存
@@ -219,19 +220,19 @@ struct ImageProcessor {
     static func processImageWithBackgroundRemoval(_ image: UIImage) async -> UIImage {
         // 画像サイズが大きすぎる場合はリサイズ
         let maxDimension: CGFloat = 2048.0
-        var processedImage = image
+        var inputImage = image
         
         if image.size.width > maxDimension || image.size.height > maxDimension {
             print("画像リサイズ: 元のサイズ \(image.size)")
-            processedImage = resizeImage(image, targetSize: CGSize(width: maxDimension, height: maxDimension))
-            print("リサイズ後: \(processedImage.size)")
+            inputImage = resizeImage(image, targetSize: CGSize(width: maxDimension, height: maxDimension))
+            print("リサイズ後: \(inputImage.size)")
         }
         
         // 背景削除処理（非同期）
-        let resultImage = await BackgroundRemoval.removeBackground(from: processedImage)
+        let (processedImage, mask) = await BackgroundRemoval.removeBackground(from: inputImage)
         
-        print("背景削除成功: サイズ \(resultImage.size)")
-        return resultImage
+        print("背景削除成功: サイズ \(processedImage.size)")
+        return processedImage
     }
     
     // iOS 18未満用のダミー実装
