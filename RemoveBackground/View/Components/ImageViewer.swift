@@ -18,6 +18,23 @@ extension CGImagePropertyOrientation {
     }
 }
 
+// MARK: - Chaikinアルゴリズムによる曲線の滑らか化
+/// Chaikin smoothing – 1回の反復で曲線を滑らかにする
+func chaikin(_ pts: [CGPoint]) -> [CGPoint] {
+    guard pts.count > 2 else { return pts }
+    var out: [CGPoint] = [pts[0]]
+    for i in 0..<pts.count - 1 {
+        let p0 = pts[i], p1 = pts[i+1]
+        let q = CGPoint(x: 0.75*p0.x + 0.25*p1.x,
+                       y: 0.75*p0.y + 0.25*p1.y)
+        let r = CGPoint(x: 0.25*p0.x + 0.75*p1.x,
+                       y: 0.25*p0.y + 0.75*p1.y)
+        out.append(contentsOf: [q, r])
+    }
+    out.append(pts.last!)
+    return out
+}
+
 struct ImageViewer: View {
     @ObservedObject var viewModel: ImageViewModel
     @Binding var isPresented: Bool
@@ -93,12 +110,6 @@ struct ImageViewer: View {
                                         .aspectRatio(viewModel.imageData.processedImage?.size ?? CGSize(width: 1, height: 1), contentMode: .fit) // 画像のアスペクト比に合わせる
                                         .frame(width: geometry.size.width, height: geometry.size.height)
                                     
-                                    // 処理済み画像
-                                    Image(uiImage: viewModel.imageData.processedImage!)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fit)
-                                        .frame(width: geometry.size.width, height: geometry.size.height)
-                                    
                                     // 輪郭パスを描画
                                     if geometry.size.width > 0 && geometry.size.height > 0 {
                                         if let mask = viewModel.imageData.maskCGImage,
@@ -114,14 +125,36 @@ struct ImageViewer: View {
                                             
                                             // 処理後のピクセルサイズをログ
                                             let _ = print("DEBUG‑IMG  orientation: \(processed.imageOrientation.rawValue)  "
-                                                          + "pixelSize: \(pixelSize)")
+                                                + "pixelSize: \(pixelSize)")
                                             
+                                            // ① ステッカー用パスを取得
                                             let swiftUIPath = createSwiftUIPath(
                                                 from: cgPath,
                                                 geomSize: geometry.size,
                                                 imgSize: pixelSize
                                             )
-                                            swiftUIPath.stroke(Color.red, lineWidth: 3)
+                                            
+                                            // ② ステッカー用の外枠パスを生成
+                                            let outlinePath = swiftUIPath.cgPath.copy(
+                                                strokingWithWidth: 32,
+                                                lineCap: .round,
+                                                lineJoin: .round,
+                                                miterLimit: 10,
+                                                transform: .identity
+                                            )
+                                            
+                                            ZStack {
+                                                // 先に白フチを塗りつぶす
+                                                Path(outlinePath)
+                                                    .fill(Color.white)
+                                                    .shadow(color: .black.opacity(0.35),
+                                                            radius: 6, x: 0, y: 4)
+                                                
+                                                // その上に画像を重ねる（内側は隠れない）
+                                                Image(uiImage: processed)
+                                                    .resizable()
+                                                    .aspectRatio(contentMode: .fit)
+                                            }
                                         }
                                     } else {
                                         let _ = print("DEBUG: GeometryReader size is zero, skipping path drawing.")
@@ -215,7 +248,21 @@ struct ImageViewer: View {
         
         let mut = CGMutablePath()
         for top in obs.topLevelContours {
-            mut.addPath(top.normalizedPath)
+            // ① SIMD2<Float> → CGPoint に変換
+            var pts: [CGPoint] = top.normalizedPoints.map {
+                CGPoint(x: CGFloat($0.x), y: CGFloat($0.y))
+            }
+            
+            // ② Chaikinは1〜2回程度に減らす（後でstrokingWithWidthで滑らかになるため）
+            for _ in 0..<2 { pts = chaikin(pts) }
+            
+            // ③ 点列から UIBezierPath を作成
+            let b = UIBezierPath()
+            b.move(to: pts[0])
+            pts.dropFirst().forEach { b.addLine(to: $0) }
+            b.close()
+            
+            mut.addPath(b.cgPath)
         }
         return mut.copy()
     }
