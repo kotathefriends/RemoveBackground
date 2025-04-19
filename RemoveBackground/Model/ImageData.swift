@@ -5,6 +5,7 @@ struct ImageData: Identifiable, Hashable {
     let id = UUID()
     var originalImage: UIImage
     var processedImage: UIImage?
+    var maskCGImage: CGImage?     // シルエットマスク画像を追加
     
     // Hashableプロトコルの実装
     func hash(into hasher: inout Hasher) {
@@ -27,8 +28,9 @@ struct ImageData: Identifiable, Hashable {
     }
     
     // 初期化時にオリジナル画像のみを指定するイニシャライザ
-    init(originalImage: UIImage, processedImage: UIImage? = nil) {
+    init(originalImage: UIImage, processedImage: UIImage? = nil, maskCGImage: CGImage? = nil) {
         self.originalImage = originalImage
         self.processedImage = processedImage
+        self.maskCGImage = maskCGImage
     }
 } 
