@@ -1,25 +1,19 @@
 import SwiftUI
 
-// 画像表示用の共通プロトコル
-protocol ImageDisplayable {
-    var originalImage: UIImage { get }
-    var processedImage: UIImage? { get }
-    var maskCGImage: CGImage? { get }
-}
+// ImageDisplayable プロトコルはクラスには直接適用できないため、一旦削除します。
+// 必要であれば、各ビューで ImageData のプロパティを直接参照するように変更します。
 
-// 画像データモデル
-struct ImageData: Identifiable, Hashable, ImageDisplayable {
+// 画像データモデル (クラスに変更)
+final class ImageData: Identifiable, ObservableObject { // class に変更し、ObservableObject に準拠
     let id = UUID()
-    var originalImage: UIImage
-    var processedImage: UIImage?
-    var maskCGImage: CGImage?     // シルエットマスク画像を追加
+    @Published var originalImage: UIImage
+    @Published var processedImage: UIImage?
+    @Published var maskCGImage: CGImage?     // シルエットマスク画像を追加
     
-    // Hashableプロトコルの実装
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
-    }
+    /// 写真ごとに覚えておきたいタブ番号
+    @Published var selectedImageIndex: Int        // 0:Sticker 1:Processed 2:Original
     
-    // Equatableプロトコルの実装
+    // Equatableプロトコルの実装 (Identifiableがあれば == は id比較で代替可能)
     static func == (lhs: ImageData, rhs: ImageData) -> Bool {
         return lhs.id == rhs.id
     }
@@ -29,15 +23,16 @@ struct ImageData: Identifiable, Hashable, ImageDisplayable {
         return processedImage != nil
     }
     
-    // 表示用の画像を返す（処理済み画像があればそれを、なければオリジナル画像を返す）
+    /// 以前と互換の計算プロパティ (表示用の画像を返す)
     var displayImage: UIImage {
-        return processedImage ?? originalImage
+        processedImage ?? originalImage
     }
     
     // 初期化時にオリジナル画像のみを指定するイニシャライザ
-    init(originalImage: UIImage, processedImage: UIImage? = nil, maskCGImage: CGImage? = nil) {
+    init(originalImage: UIImage, processedImage: UIImage? = nil, maskCGImage: CGImage? = nil, selectedImageIndex: Int = 0) {
         self.originalImage = originalImage
         self.processedImage = processedImage
         self.maskCGImage = maskCGImage
+        self.selectedImageIndex = selectedImageIndex
     }
 } 

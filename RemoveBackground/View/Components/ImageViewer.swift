@@ -6,7 +6,6 @@ struct ImageViewer: View {
     @ObservedObject var viewModel: ImageViewModel
     @Binding var isPresented: Bool
     @State private var showControls = true
-    @State private var selectedImageIndex = 0 // 表示する画像のインデックス
     
     var body: some View {
         ZStack {
@@ -16,7 +15,7 @@ struct ImageViewer: View {
                 if showControls {
                     HeaderControls(
                         viewModel: viewModel,
-                        selectedImageIndex: $selectedImageIndex,
+                        selectedImageIndex: $viewModel.selectedImageIndex,
                         isPresented: $isPresented
                     )
                 }
@@ -24,7 +23,7 @@ struct ImageViewer: View {
                 // 画像表示部分
                 ImageDisplay(
                     viewModel: viewModel,
-                    selectedImageIndex: $selectedImageIndex,
+                    selectedImageIndex: $viewModel.selectedImageIndex,
                     showControls: $showControls
                 )
                 
@@ -37,7 +36,7 @@ struct ImageViewer: View {
         }
         .onAppear {
             // 画面表示時に自動的に背景削除を開始
-            if !viewModel.hasProcessedImage && !viewModel.isProcessing {
+            if !viewModel.imageData.hasProcessedImage && !viewModel.isProcessing {
                 viewModel.removeBackgroundAsync()
             }
         }
@@ -53,7 +52,7 @@ struct HeaderControls: View {
     var body: some View {
         VStack(spacing: 0) {
             // 画像切り替えインジケーター
-            if viewModel.hasProcessedImage {
+            if viewModel.imageData.hasProcessedImage {
                 ImageIndicator(selectedImageIndex: $selectedImageIndex)
                     .padding(.horizontal, 20)
                     .padding(.top, 10)
@@ -92,7 +91,6 @@ struct ImageIndicator: View {
                 .frame(height: 3)
                 .onTapGesture {
                     selectedImageIndex = 0
-                    // ハプティックフィードバックを追加
                     triggerHapticFeedback()
                 }
             
@@ -102,7 +100,6 @@ struct ImageIndicator: View {
                 .frame(height: 3)
                 .onTapGesture {
                     selectedImageIndex = 1
-                    // ハプティックフィードバックを追加
                     triggerHapticFeedback()
                 }
             
@@ -112,7 +109,6 @@ struct ImageIndicator: View {
                 .frame(height: 3)
                 .onTapGesture {
                     selectedImageIndex = 2
-                    // ハプティックフィードバックを追加
                     triggerHapticFeedback()
                 }
         }
@@ -137,7 +133,7 @@ struct ImageDisplay: View {
     var body: some View {
         ZStack {
             // 画像表示
-            if viewModel.hasProcessedImage {
+            if viewModel.imageData.hasProcessedImage {
                 displaySelectedImage()
             } else {
                 // 処理済み画像がない場合は元画像を表示
@@ -173,7 +169,6 @@ struct ImageDisplay: View {
         .onLongPressGesture(minimumDuration: 0.3) {
             withAnimation {
                 showControls.toggle()
-                // 長押し時にもフィードバック
                 hapticGenerator.impactOccurred()
             }
         }
@@ -181,18 +176,14 @@ struct ImageDisplay: View {
     
     // タップ処理ロジック
     private func handleTap(isLeft: Bool) {
-        guard viewModel.hasProcessedImage else { return }
+        guard viewModel.imageData.hasProcessedImage else { return }
         
         withAnimation {
             if isLeft {
-                // 左タップ：前の画像へ（循環）
                 selectedImageIndex = (selectedImageIndex - 1 + 3) % 3
             } else {
-                // 右タップ：次の画像へ（循環）
                 selectedImageIndex = (selectedImageIndex + 1) % 3
             }
-            
-            // ハプティックフィードバックを生成
             hapticGenerator.impactOccurred()
         }
     }
@@ -201,13 +192,10 @@ struct ImageDisplay: View {
     private func displaySelectedImage() -> some View {
         switch selectedImageIndex {
         case 0:
-            // 処理済み画像1（ステッカー風）
             StickeredImageView(imageData: viewModel.imageData)
         case 1:
-            // 処理済み画像2（白背景、枠線なし）
             ProcessedImageView(imageData: viewModel.imageData)
         default:
-            // 元画像
             Image(uiImage: viewModel.imageData.originalImage)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -218,7 +206,7 @@ struct ImageDisplay: View {
 
 // MARK: - ステッカー風画像表示
 struct StickeredImageView: View {
-    let imageData: ImageDisplayable
+    @ObservedObject var imageData: ImageData
     
     var body: some View {
         GeometryReader { geometry in
@@ -281,7 +269,7 @@ struct StickeredImageView: View {
 
 // MARK: - 白背景画像表示
 struct ProcessedImageView: View {
-    let imageData: ImageDisplayable
+    @ObservedObject var imageData: ImageData
     
     var body: some View {
         ZStack {

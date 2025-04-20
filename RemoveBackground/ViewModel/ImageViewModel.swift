@@ -3,14 +3,23 @@ import Combine
 
 /// 画像データを管理するViewModel
 class ImageViewModel: ObservableObject {
-    @Published var imageData: ImageData
+    @ObservedObject var imageData: ImageData
     @Published var isProcessing = false
-    @Published var showOriginal = false
+    // @Published var showOriginal = false // selectedImageIndex で代替
+
+    /// UI バインディング用
+    @Published var selectedImageIndex: Int {
+        didSet {                 // ← ビューで値が変わったら…
+            imageData.selectedImageIndex = selectedImageIndex   // ← 写真側にも保存
+        }
+    }
     
     /// 初期化
     /// - Parameter imageData: 画像データ
     init(imageData: ImageData) {
         self.imageData = imageData
+        self.selectedImageIndex = imageData.selectedImageIndex  // ← 前回値を復元
+        // 注意: ここで永続化されたインデックスを読み込む処理を追加することも可能
     }
     
     /// 処理済み画像を更新
@@ -20,18 +29,11 @@ class ImageViewModel: ObservableObject {
     func updateProcessedImage(_ image: UIImage, mask: CGImage? = nil) {
         imageData.processedImage = image
         imageData.maskCGImage = mask
-        showOriginal = false
-        objectWillChange.send()
+        // selectedImageIndex は変更しない（ユーザーが最後に見ていたタブを維持）
+        // objectWillChange.send() は @ObservedObject が自動的に処理するため不要な場合が多い
     }
     
-    /// 画像表示を切り替え（元画像と処理済み画像）
-    func toggleImageDisplay() {
-        if hasProcessedImage {
-            withAnimation {
-                showOriginal.toggle()
-            }
-        }
-    }
+    // toggleImageDisplay() は不要になったため削除可能
     
     /// 画像を必ず「ピクセルもメタデータも.up」に揃える
     func normalizedUpImage(from src: UIImage) -> UIImage {
@@ -75,6 +77,7 @@ class ImageViewModel: ObservableObject {
     /// 非同期で背景削除処理を実行
     func removeBackgroundAsync() {
         guard !isProcessing else { return }
+        guard !imageData.hasProcessedImage else { return } // すでに処理済みなら実行しない
         
         isProcessing = true
         
@@ -93,10 +96,7 @@ class ImageViewModel: ObservableObject {
         }
     }
     
-    /// 表示する画像を取得（元画像表示のオーバーライド）
-    var displayImage: UIImage {
-        return showOriginal ? imageData.originalImage : imageData.displayImage
-    }
+    // displayImage プロパティも不要になったため削除可能
     
     /// 処理済み画像があるかどうか
     var hasProcessedImage: Bool {
