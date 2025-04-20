@@ -93,13 +93,13 @@ class ImageViewModel: ObservableObject {
         }
     }
     
-    /// 表示する画像を取得
+    /// 表示する画像を取得（元画像表示のオーバーライド）
     var displayImage: UIImage {
-        return showOriginal ? imageData.originalImage : (imageData.processedImage ?? imageData.originalImage)
+        return showOriginal ? imageData.originalImage : imageData.displayImage
     }
     
     /// 処理済み画像があるかどうか
     var hasProcessedImage: Bool {
-        return imageData.processedImage != nil
+        return imageData.hasProcessedImage
     }
 } 

@@ -6,6 +6,7 @@ struct CameraView: View {
     @StateObject var viewModel = CameraViewModel()
     @State private var imageViewModel: ImageViewModel?
     @State private var isImagePickerPresented = false
+    @State private var isTaken = false
     
     var body: some View {
         ZStack {
@@ -20,6 +21,15 @@ struct CameraView: View {
                 
                 Button(action: {
                     viewModel.takePicture()
+                    withAnimation {
+                        isTaken = true
+                    }
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        withAnimation {
+                            isTaken = false
+                        }
+                    }
                 }) {
                     Circle()
                         .fill(Color.white)
@@ -48,7 +58,7 @@ struct CameraView: View {
                 )
             }
             
-            if viewModel.cameraManager.isTaken {
+            if isTaken {
                 Color.white
                     .edgesIgnoringSafeArea(.all)
                     .opacity(0.3)

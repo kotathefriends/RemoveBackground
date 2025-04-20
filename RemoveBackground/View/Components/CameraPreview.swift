@@ -28,12 +28,8 @@ struct CameraPreview: UIViewRepresentable {
         DispatchQueue.main.async {
             self.cameraManager.preview = previewLayer
             
-            // セッションが開始されていない場合は開始
-            if !self.cameraManager.session.isRunning {
-                DispatchQueue.global(qos: .userInitiated).async {
-                    self.cameraManager.session.startRunning()
-                }
-            }
+            // セッション開始
+            ensureSessionRunning()
         }
         
         print("CameraPreview: makeUIViewが呼ばれました")
@@ -46,7 +42,12 @@ struct CameraPreview: UIViewRepresentable {
             previewLayer.frame = uiView.bounds
         }
         
-        // セッションが開始されていない場合は開始
+        // セッション開始
+        ensureSessionRunning()
+    }
+    
+    // セッションが開始されていない場合に開始するヘルパー関数
+    private func ensureSessionRunning() {
         if !cameraManager.session.isRunning {
             DispatchQueue.global(qos: .userInitiated).async {
                 self.cameraManager.session.startRunning()

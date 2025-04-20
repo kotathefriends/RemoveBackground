@@ -1,7 +1,14 @@
 import SwiftUI
 
+// 画像表示用の共通プロトコル
+protocol ImageDisplayable {
+    var originalImage: UIImage { get }
+    var processedImage: UIImage? { get }
+    var maskCGImage: CGImage? { get }
+}
+
 // 画像データモデル
-struct ImageData: Identifiable, Hashable {
+struct ImageData: Identifiable, Hashable, ImageDisplayable {
     let id = UUID()
     var originalImage: UIImage
     var processedImage: UIImage?

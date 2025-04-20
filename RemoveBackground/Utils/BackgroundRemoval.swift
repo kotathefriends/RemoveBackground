@@ -61,16 +61,6 @@ class BackgroundRemoval {
 // MARK: - UIImage拡張
 
 extension UIImage {
-    // CVPixelBufferからUIImageを生成する便利イニシャライザ（従来版）
-    convenience init?(pixelBuffer: CVPixelBuffer) {
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        let context = CIContext(options: [.useSoftwareRenderer: false])
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else {
-            return nil
-        }
-        self.init(cgImage: cgImage)
-    }
-    
     /// CVPixelBuffer → UIImage（向きとスケールを指定）
     convenience init?(pixelBuffer: CVPixelBuffer,
                       scale: CGFloat = 1.0,

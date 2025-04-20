@@ -54,7 +54,7 @@ class CameraViewModel: ObservableObject {
             needsBackgroundRemovalIDs.remove(imageData.id)
             
             // UI更新を通知
-            objectWillChange.send()
+            notifyUIUpdate()
         }
     }
     
@@ -77,10 +77,28 @@ class CameraViewModel: ObservableObject {
         processBackgroundRemoval()
         
         // UI更新を通知
-        objectWillChange.send()
+        notifyUIUpdate()
     }
     
     // MARK: - プライベートメソッド
+    
+    // メインスレッドで処理を実行するヘルパー関数
+    private func executeOnMain(_ task: @escaping () -> Void) {
+        DispatchQueue.main.async {
+            task()
+        }
+    }
+    
+    // UI更新を通知するヘルパー関数
+    private func notifyUIUpdate(afterDelay delay: TimeInterval = 0) {
+        let action = { self.objectWillChange.send() }
+        
+        if delay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: action)
+        } else {
+            executeOnMain(action)
+        }
+    }
     
     // 通知の購読設定
     private func setupSubscriptions() {
@@ -101,9 +119,7 @@ class CameraViewModel: ObservableObject {
             }
             
             // 明示的にUI更新を通知
-            DispatchQueue.main.async {
-                self.objectWillChange.send()
-            }
+            self.notifyUIUpdate()
         }.store(in: &cancellables)
     }
     
@@ -115,9 +131,7 @@ class CameraViewModel: ObservableObject {
                 await self.processMarkedImages()
                 
                 // 処理後に明示的にUI更新を通知
-                DispatchQueue.main.async {
-                    self.objectWillChange.send()
-                }
+                self.notifyUIUpdate()
             }
         }
     }
@@ -172,7 +186,7 @@ class CameraViewModel: ObservableObject {
             needsBackgroundRemovalIDs.subtract(processedIDs)
             
             // UI更新を通知
-            self.objectWillChange.send()
+            notifyUIUpdate()
         }
     }
     
@@ -213,39 +227,6 @@ struct ImageProcessor {
         }
         
         return image
-    }
-    
-    // 背景削除処理を行う関数
-    @available(iOS 18.0, *)
-    static func processImageWithBackgroundRemoval(_ image: UIImage) async -> UIImage {
-        // 画像サイズが大きすぎる場合はリサイズ
-        let maxDimension: CGFloat = 2048.0
-        var inputImage = image
-        
-        if image.size.width > maxDimension || image.size.height > maxDimension {
-            print("画像リサイズ: 元のサイズ \(image.size)")
-            inputImage = resizeImage(image, targetSize: CGSize(width: maxDimension, height: maxDimension))
-            print("リサイズ後: \(inputImage.size)")
-        }
-        
-        // 背景削除処理（非同期）
-        let (processedImage, mask) = await BackgroundRemoval.removeBackground(from: inputImage)
-        
-        print("背景削除成功: サイズ \(processedImage.size)")
-        return processedImage
-    }
-    
-    // iOS 18未満用のダミー実装
-    static func processImageWithBackgroundRemoval(_ image: UIImage) -> UIImage? {
-        if #available(iOS 18.0, *) {
-            // iOS 18以上の場合はエラー（非同期版を使用すべき）
-            assertionFailure("iOS 18以上ではasync版を使用してください")
-            return nil
-        } else {
-            // iOS 18未満の場合は未サポート
-            print("背景削除はiOS 18以上が必要です")
-            return nil
-        }
     }
     
     // 画像をリサイズする関数

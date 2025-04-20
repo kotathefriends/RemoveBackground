@@ -8,7 +8,6 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
     @Published var session = AVCaptureSession()
     @Published var output = AVCapturePhotoOutput()
     @Published var preview: AVCaptureVideoPreviewLayer?
-    @Published var isTaken = false
     @Published var capturedImage: UIImage?
     @Published var isError = false
     @Published var errorMessage = ""
@@ -31,13 +30,11 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { status in
                 if status {
-                    DispatchQueue.main.async {
+                    self.executeOnMain {
                         self.setupCamera()
                     }
                 } else {
-                    DispatchQueue.main.async {
-                        self.handleError(message: "カメラへのアクセスが拒否されました")
-                    }
+                    self.handleError(message: "カメラへのアクセスが拒否されました")
                 }
             }
         case .denied, .restricted:
@@ -48,7 +45,7 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
     }
     
     private func handleError(message: String) {
-        DispatchQueue.main.async {
+        executeOnMain {
             self.isError = true
             self.errorMessage = message
             print("エラー: \(message)")
@@ -93,33 +90,20 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
     }
     
     func takePicture() {
-        DispatchQueue.global(qos: .background).async {
+        executeInBackground {
             let settings = AVCapturePhotoSettings()
             self.output.capturePhoto(with: settings, delegate: self)
-            
-            DispatchQueue.main.async {
-                withAnimation {
-                    self.isTaken = true
-                }
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    withAnimation {
-                        self.isTaken = false
-                    }
-                }
-            }
         }
     }
     
     func retake() {
-        DispatchQueue.main.async {
-            self.isTaken = false
+        executeOnMain {
             self.capturedImage = nil
         }
     }
     
     func startSession() {
-        DispatchQueue.global(qos: .background).async {
+        executeInBackground {
             if !self.session.isRunning {
                 print("カメラセッション開始")
                 self.session.startRunning()
@@ -130,11 +114,38 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
     }
     
     func stopSession() {
-        DispatchQueue.global(qos: .background).async {
+        executeInBackground {
             if self.session.isRunning {
                 print("カメラセッション停止")
                 self.session.stopRunning()
             }
+        }
+    }
+    
+    // バックグラウンドキューで処理を実行するヘルパー関数
+    private func executeInBackground(task: @escaping () -> Void) {
+        DispatchQueue.global(qos: .background).async {
+            task()
+        }
+    }
+    
+    // メインキューで処理を実行するヘルパー関数
+    private func executeOnMain(task: @escaping () -> Void) {
+        DispatchQueue.main.async {
+            task()
+        }
+    }
+    
+    // UI更新を通知するヘルパー関数
+    private func notifyUIUpdate(afterDelay delay: TimeInterval = 0) {
+        let action = {
+            self.objectWillChange.send()
+        }
+        
+        if delay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: action)
+        } else {
+            executeOnMain(task: action)
         }
     }
     
@@ -152,19 +163,17 @@ class CameraManager: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
         self.photoData = imageData
         
         if let image = UIImage(data: imageData) {
-            DispatchQueue.main.async {
+            executeOnMain {
                 self.capturedImage = image
                 print("写真撮影成功: サイズ \(image.size)")
                 
                 let newImageData = ImageData(originalImage: image)
                 self.savedImages.append(newImageData)
                 
-                self.objectWillChange.send()
+                self.notifyUIUpdate()
+                self.notifyUIUpdate(afterDelay: 0.1)
                 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    self.objectWillChange.send()
-                    print("保存された画像数: \(self.savedImages.count)")
-                }
+                print("保存された画像数: \(self.savedImages.count)")
             }
         }
     }
