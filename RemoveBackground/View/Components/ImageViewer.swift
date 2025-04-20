@@ -52,8 +52,8 @@ struct HeaderControls: View {
     
     var body: some View {
         VStack(spacing: 0) {
-                    // 画像切り替えインジケーター
-                    if viewModel.hasProcessedImage {
+            // 画像切り替えインジケーター
+            if viewModel.hasProcessedImage {
                 ImageIndicator(selectedImageIndex: $selectedImageIndex)
                     .padding(.horizontal, 20)
                     .padding(.top, 10)
@@ -85,31 +85,43 @@ struct ImageIndicator: View {
     @Binding var selectedImageIndex: Int
     
     var body: some View {
-                        HStack(spacing: 4) {
-                            // 処理済み画像1（白背景）
-                            Rectangle()
-                                .fill(selectedImageIndex == 0 ? Color.white : Color.white.opacity(0.5))
-                                .frame(height: 3)
-                                .onTapGesture {
-                                    selectedImageIndex = 0
-                                }
-                            
-                            // 処理済み画像2（白背景）
-                            Rectangle()
-                                .fill(selectedImageIndex == 1 ? Color.white : Color.white.opacity(0.5))
-                                .frame(height: 3)
-                                .onTapGesture {
-                                    selectedImageIndex = 1
-                                }
-                            
-                            // 元画像
-                            Rectangle()
-                                .fill(selectedImageIndex == 2 ? Color.white : Color.white.opacity(0.5))
-                                .frame(height: 3)
-                                .onTapGesture {
-                                    selectedImageIndex = 2
-                                }
-                        }
+        HStack(spacing: 4) {
+            // 処理済み画像1（ステッカー風）
+            Rectangle()
+                .fill(selectedImageIndex == 0 ? Color.white : Color.white.opacity(0.5))
+                .frame(height: 3)
+                .onTapGesture {
+                    selectedImageIndex = 0
+                    // ハプティックフィードバックを追加
+                    triggerHapticFeedback()
+                }
+            
+            // 処理済み画像2（白背景、枠線なし）
+            Rectangle()
+                .fill(selectedImageIndex == 1 ? Color.white : Color.white.opacity(0.5))
+                .frame(height: 3)
+                .onTapGesture {
+                    selectedImageIndex = 1
+                    // ハプティックフィードバックを追加
+                    triggerHapticFeedback()
+                }
+            
+            // 元画像
+            Rectangle()
+                .fill(selectedImageIndex == 2 ? Color.white : Color.white.opacity(0.5))
+                .frame(height: 3)
+                .onTapGesture {
+                    selectedImageIndex = 2
+                    // ハプティックフィードバックを追加
+                    triggerHapticFeedback()
+                }
+        }
+    }
+    
+    // ハプティックフィードバックを生成する関数
+    private func triggerHapticFeedback() {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.impactOccurred()
     }
 }
 
@@ -119,35 +131,70 @@ struct ImageDisplay: View {
     @Binding var selectedImageIndex: Int
     @Binding var showControls: Bool
     
+    // ハプティックフィードバック用ジェネレーター
+    private let hapticGenerator = UIImpactFeedbackGenerator(style: .soft)
+    
     var body: some View {
-                ZStack {
-                    if viewModel.hasProcessedImage {
+        ZStack {
+            // 画像表示
+            if viewModel.hasProcessedImage {
                 displaySelectedImage()
-                    } else {
-                        // 処理済み画像がない場合は元画像を表示
-                        Image(uiImage: viewModel.imageData.originalImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                    
-                    // タップジェスチャーを追加
+            } else {
+                // 処理済み画像がない場合は元画像を表示
+                Image(uiImage: viewModel.imageData.originalImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            
+            // 左右のタップエリア（画像切り替え用）
+            GeometryReader { geometry in
+                HStack(spacing: 0) {
+                    // 左側エリア
                     Color.clear
                         .contentShape(Rectangle())
+                        .frame(width: geometry.size.width / 2)
                         .onTapGesture {
-                            if viewModel.hasProcessedImage {
-                                withAnimation {
-                                    selectedImageIndex = (selectedImageIndex + 1) % 3
-                                }
-                            }
+                            handleTap(isLeft: true)
                         }
-                        .onLongPressGesture(minimumDuration: 0.3) {
-                            withAnimation {
-                                showControls.toggle()
-                            }
+                    
+                    // 右側エリア
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .frame(width: geometry.size.width / 2)
+                        .onTapGesture {
+                            handleTap(isLeft: false)
                         }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // 長押しジェスチャーをZStackに適用
+        .onLongPressGesture(minimumDuration: 0.3) {
+            withAnimation {
+                showControls.toggle()
+                // 長押し時にもフィードバック
+                hapticGenerator.impactOccurred()
+            }
+        }
+    }
+    
+    // タップ処理ロジック
+    private func handleTap(isLeft: Bool) {
+        guard viewModel.hasProcessedImage else { return }
+        
+        withAnimation {
+            if isLeft {
+                // 左タップ：前の画像へ（循環）
+                selectedImageIndex = (selectedImageIndex - 1 + 3) % 3
+            } else {
+                // 右タップ：次の画像へ（循環）
+                selectedImageIndex = (selectedImageIndex + 1) % 3
+            }
+            
+            // ハプティックフィードバックを生成
+            hapticGenerator.impactOccurred()
+        }
     }
     
     @ViewBuilder
